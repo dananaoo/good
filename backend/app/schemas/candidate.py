@@ -63,8 +63,8 @@ class CandidateExperienceCreate(CandidateExperienceBase):
 
 
 class CandidateExperienceResponse(CandidateExperienceBase):
-    id: str
-    candidate_id: str
+    id: UUID
+    candidate_id: UUID
 
     class Config:
         from_attributes = True
@@ -85,8 +85,8 @@ class CandidateEducationCreate(CandidateEducationBase):
 
 
 class CandidateEducationResponse(CandidateEducationBase):
-    id: str
-    candidate_id: str
+    id: UUID
+    candidate_id: UUID
 
     class Config:
         from_attributes = True
@@ -104,8 +104,8 @@ class CandidateSkillCreate(CandidateSkillBase):
 
 
 class CandidateSkillResponse(CandidateSkillBase):
-    id: str
-    candidate_id: str
+    id: UUID
+    candidate_id: UUID
 
     class Config:
         from_attributes = True
