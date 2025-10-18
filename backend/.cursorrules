@@ -1,0 +1,249 @@
+# Goal
+Set up a production-ready FastAPI backend for **SmartBot 2.0**, an AI recruiter chatbot that conducts real-time interview sessions with candidates through a web widget, compares resumes and job vacancies, and generates dynamic relevance scores.
+
+---
+
+## 🔧 Stack
+
+- **Language:** Python 3.11+
+- **Framework:** FastAPI
+- **Database:** PostgreSQL 15+
+- **Cache / Async queue:** Redis
+- **ORM:** SQLAlchemy + Alembic
+- **WebSocket:** FastAPI WebSocket (native)
+- **Auth:** JWT
+- **Containerization:** Docker + Docker Compose
+- **AI integration:** Gemini 1.5 Flash (for question generation and scoring)
+- **Optional embeddings:** OpenAI `text-embedding-3-small`
+- **Prompt orchestration:** LangChain (optional)
+- **Frontend (not included in this prompt):** React 18 widget (Mantine UI)
+
+---
+
+## 📦 Tasks for Cursor
+
+1. **Initialize project structure**
+   ```
+   backend/
+     ├── app/
+     │    ├── main.py
+     │    ├── db.py
+     │    ├── models/
+     │    ├── schemas/
+     │    ├── routers/
+     │    ├── websocket/
+     │    ├── ai/
+     │    ├── core/
+     │    └── utils/
+     ├── alembic/
+     ├── docker-compose.yml
+     ├── Dockerfile
+     └── requirements.txt
+   ```
+
+2. **Set up database models** according to this schema:
+
+---
+
+### 🧩 DATABASE STRUCTURE (PostgreSQL)
+
+#### users
+- id (UUID, PK)
+- email (varchar)
+- password_hash (text)
+- full_name (varchar)
+- role enum('admin','employer','candidate')
+- created_at (timestamp)
+- last_login (timestamp)
+
+#### employers
+- id (UUID, PK)
+- user_id (FK → users.id)
+- company_name (varchar)
+- industry (varchar)
+- location (varchar)
+- website (text)
+- verified (bool)
+- created_at (timestamp)
+
+#### candidates
+- id (UUID, PK)
+- user_id (FK → users.id)
+- full_name (varchar)
+- city, country, citizenship (varchar)
+- birth_date (date)
+- phone (varchar)
+- email (varchar)
+- expected_salary (int)
+- currency (varchar)
+- employment_type enum('full-time','part-time','remote','hybrid','internship')
+- summary (text)
+- created_at, updated_at (timestamp)
+
+#### resumes
+- id (UUID, PK)
+- candidate_id (FK → candidates.id)
+- resume_text (text)
+- file_url (text)
+- parsed_json (jsonb)
+- created_at (timestamp)
+
+#### vacancies
+- id (UUID, PK)
+- employer_id (FK → employers.id)
+- title, department, company_name, industry (varchar)
+- city, region, country (varchar)
+- experience_min, experience_max (float)
+- employment_type enum('full-time','part-time','internship','contract')
+- work_schedule enum('full-day','shift','remote','hybrid','flexible')
+- education_level (varchar)
+- required_languages (jsonb)
+- required_skills (text[])
+- salary_min, salary_max (int)
+- currency (varchar)
+- responsibilities, requirements, conditions, benefits (text[])
+- description (text)
+- source_url (text)
+- created_at, updated_at (timestamp)
+- is_active (bool)
+
+#### candidate_experiences / educations / skills / languages / achievements / links
+→ each as separate tables (FK → candidates.id)
+
+#### interviews
+- id (UUID, PK)
+- vacancy_id (FK → vacancies.id)
+- candidate_id (FK → candidates.id)
+- status enum('pending','in_progress','completed','scored')
+- current_stage enum('resume_fit','hard_skills','soft_skills','finished')
+- ai_version (varchar)
+- started_at, ended_at (timestamp)
+- final_score (float)
+- summary_json (jsonb)
+- notes (text)
+- created_at (timestamp)
+
+#### interview_messages
+- id (UUID, PK)
+- interview_id (FK → interviews.id)
+- sender enum('bot','candidate')
+- stage enum('resume_fit','hard_skills','soft_skills')
+- message_type enum('question','answer','info')
+- message (text)
+- ai_generated (bool)
+- score_impact (float)
+- created_at (timestamp)
+
+#### evaluation_scores
+- id (UUID, PK)
+- interview_id (FK → interviews.id)
+- category enum('resume_fit','hard_skills','soft_skills')
+- score (float)
+- weight (float)
+- explanation (text)
+
+#### evaluation_summary
+- id (UUID, PK)
+- interview_id (FK → interviews.id)
+- overall_score (float)
+- breakdown (jsonb)
+- reasoning (text)
+- ai_confidence (float)
+- generated_at (timestamp)
+
+#### system_logs (optional)
+- id (UUID, PK)
+- entity_type, event (varchar)
+- entity_id (uuid)
+- details (jsonb)
+- created_at (timestamp)
+
+---
+
+## ⚙️ Backend Features to Scaffold
+
+### ✅ Authentication & User Management
+- JWT-based login / signup for employer and candidate.
+- Role-based access (admin, employer, candidate).
+
+### ✅ Vacancy Management (CRUD)
+- `/vacancies` routes for creation, listing, filtering, etc.
+- auto JSON serialization for required_skills, languages.
+
+### ✅ Candidate Management (CRUD)
+- `/candidates` + nested data: skills, experience, education, etc.
+- `/resumes/upload` route for PDF upload + text extraction.
+
+### ✅ Interview & AI Chat
+- **WebSocket endpoint** `/ws/interview/{interview_id}`:
+  - Accepts candidate messages.
+  - Sends real-time AI responses.
+  - Stores each exchange in `interview_messages`.
+  - Updates dynamic scores in `evaluation_scores`.
+
+- **Interview lifecycle:**
+  1. Resume Fit check → mismatches → questions.
+  2. Hard Skills verification → scoring.
+  3. Soft Skills & Motivation → scoring.
+  4. Final summary → stored in `evaluation_summary`.
+
+### ✅ AI Integration
+- Create `/ai/interview_logic.py` to connect Gemini API:
+  - Generate clarifying questions.
+  - Analyze answers.
+  - Compute adaptive weights & final relevance.
+- Use Redis cache to store session context (`session:{interview_id}`).
+
+### ✅ Relevance Calculation
+- Dynamic weighted average formula:
+  ```
+  final_score = Σ(category_score × adaptive_weight) / Σ(weights)
+  ```
+- Save intermediate category scores in `evaluation_scores`.
+
+### ✅ HR Dashboard API
+- `/hr/interviews` — list of candidates with scores and breakdowns.
+- `/hr/interview/{id}` — full chat + summary + reasoning.
+
+---
+
+## ⚡ Realtime WebSocket Logic
+
+1. Candidate connects → server sends greeting.
+2. Bot (Gemini) sends the first question.
+3. Candidate replies → message logged → AI evaluates.
+4. Score updates streamed live (WebSocket `send_json`).
+5. Once complete → bot sends final report, marks `status='scored'`.
+
+---
+
+## 🚀 Deliverables
+
+When Cursor finishes:
+1. Database models & Alembic migrations ready.
+2. CRUD routes for all main entities.
+3. WebSocket endpoint fully functional.
+4. Gemini integration placeholder ready (API key env).
+5. Docker + Docker Compose stack running:  
+   `fastapi`, `postgres`, `redis`.
+6. `.env` file template with DB and API configs.
+
+---
+
+## 🧠 Optional Enhancements
+
+- Add `/analytics` route for HR to see aggregated stats (avg match, top mismatches).
+- Implement soft-deletion for old interviews.
+- Integrate LangChain memory for multi-turn AI context.
+- Add WebSocket typing indicators (“bot is thinking…”).
+
+---
+
+### ✅ Final Note for Cursor
+
+Make sure to:
+- Use **SQLAlchemy UUID columns** with `uuid4()` defaults.
+- Include Pydantic schemas for every model.
+- Create an async DB session dependency.
+- Follow `app/routers/*` modular structure.
+- Implement type-safe enums and relationships between tables.
