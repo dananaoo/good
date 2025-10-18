@@ -12,6 +12,7 @@ from app.db import get_db
 from app.models.interview import Interview, InterviewMessage, MessageSender, MessageType, InterviewStage, InterviewStatus
 from app.models.candidate import Candidate
 from app.models.vacancy import Vacancy
+from app.models.resume import Resume
 from app.ai.interview_logic import InterviewAI
 
 # Redis connection for session management
@@ -93,8 +94,22 @@ async def websocket_endpoint(websocket: WebSocket, interview_id: str):
                 })
                 return
             
+            # Get resume data for the candidate
+            result = await db.execute(
+                select(Resume).where(Resume.candidate_id == candidate.id).order_by(Resume.created_at.desc())
+            )
+            resume = result.scalar_one_or_none()
+            
+            if not resume:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Resume not found for candidate"
+                })
+                return
+            
             # Initialize AI interviewer
-            ai_interviewer = InterviewAI(candidate, vacancy, interview)
+            ai_interviewer = InterviewAI()
+            await ai_interviewer.start_interview(vacancy, candidate, resume)
             
             # Send initial greeting
             await websocket.send_json({
