@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
+import uuid
 
 
 class EmployerBase(BaseModel):
@@ -24,8 +24,8 @@ class EmployerUpdate(BaseModel):
 
 
 class EmployerResponse(EmployerBase):
-    id: UUID
-    user_id: UUID
+    id: uuid.UUID
+    user_id: uuid.UUID
     verified: bool
     created_at: datetime
 

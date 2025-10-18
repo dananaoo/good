@@ -129,13 +129,13 @@ async def get_my_resumes(
 
 @router.get("/{resume_id}", response_model=ResumeResponse)
 async def get_resume(
-    resume_id: str,
+    resume_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_candidate)
 ):
     """Get resume by ID."""
     result = await db.execute(
-        select(Resume).where(Resume.id == uuid.UUID(resume_id))
+        select(Resume).where(Resume.id == resume_id)
     )
     resume = result.scalar_one_or_none()
     

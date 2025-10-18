@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, Dict, Any
+import uuid
 
 
 class ResumeBase(BaseModel):
@@ -10,7 +11,7 @@ class ResumeBase(BaseModel):
 
 
 class ResumeCreate(ResumeBase):
-    candidate_id: str
+    candidate_id: uuid.UUID
 
 
 class ResumeUpdate(BaseModel):
@@ -20,8 +21,8 @@ class ResumeUpdate(BaseModel):
 
 
 class ResumeResponse(ResumeBase):
-    id: str
-    candidate_id: str
+    id: uuid.UUID
+    candidate_id: uuid.UUID
     created_at: datetime
 
     class Config:

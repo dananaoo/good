@@ -102,13 +102,13 @@ async def update_my_candidate_profile(
 
 @router.get("/{candidate_id}", response_model=CandidateResponse)
 async def get_candidate(
-    candidate_id: str,
+    candidate_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employer_or_candidate)
 ):
     """Get candidate by ID."""
     result = await db.execute(
-        select(Candidate).where(Candidate.id == uuid.UUID(candidate_id))
+        select(Candidate).where(Candidate.id == candidate_id)
     )
     candidate = result.scalar_one_or_none()
     

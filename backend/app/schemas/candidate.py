@@ -4,6 +4,7 @@ from typing import Optional, List
 from app.models.candidate import EmploymentType
 from uuid import UUID
 
+
 class CandidateBase(BaseModel):
     full_name: str
     city: Optional[str] = None
@@ -122,8 +123,8 @@ class CandidateLanguageCreate(CandidateLanguageBase):
 
 
 class CandidateLanguageResponse(CandidateLanguageBase):
-    id: str
-    candidate_id: str
+    id: UUID
+    candidate_id: UUID
 
     class Config:
         from_attributes = True
@@ -142,8 +143,8 @@ class CandidateAchievementCreate(CandidateAchievementBase):
 
 
 class CandidateAchievementResponse(CandidateAchievementBase):
-    id: str
-    candidate_id: str
+    id: UUID
+    candidate_id: UUID
 
     class Config:
         from_attributes = True
@@ -160,8 +161,8 @@ class CandidateLinkCreate(CandidateLinkBase):
 
 
 class CandidateLinkResponse(CandidateLinkBase):
-    id: str
-    candidate_id: str
+    id: UUID
+    candidate_id: UUID
 
     class Config:
         from_attributes = True

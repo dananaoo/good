@@ -106,12 +106,12 @@ async def get_my_vacancies(
 
 @router.get("/{vacancy_id}", response_model=VacancyResponse)
 async def get_vacancy(
-    vacancy_id: str,
+    vacancy_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
     """Get vacancy by ID."""
     result = await db.execute(
-        select(Vacancy).where(Vacancy.id == uuid.UUID(vacancy_id))
+        select(Vacancy).where(Vacancy.id == vacancy_id)
     )
     vacancy = result.scalar_one_or_none()
     
@@ -126,7 +126,7 @@ async def get_vacancy(
 
 @router.put("/{vacancy_id}", response_model=VacancyResponse)
 async def update_vacancy(
-    vacancy_id: str,
+    vacancy_id: uuid.UUID,
     vacancy_update: VacancyUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employer)
@@ -149,7 +149,7 @@ async def update_vacancy(
     result = await db.execute(
         select(Vacancy).where(
             and_(
-                Vacancy.id == uuid.UUID(vacancy_id),
+                Vacancy.id == vacancy_id,
                 Vacancy.employer_id == employer.id
             )
         )
@@ -174,7 +174,7 @@ async def update_vacancy(
 
 @router.delete("/{vacancy_id}")
 async def delete_vacancy(
-    vacancy_id: str,
+    vacancy_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employer)
 ):
@@ -196,7 +196,7 @@ async def delete_vacancy(
     result = await db.execute(
         select(Vacancy).where(
             and_(
-                Vacancy.id == uuid.UUID(vacancy_id),
+                Vacancy.id == vacancy_id,
                 Vacancy.employer_id == employer.id
             )
         )

@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import uuid
 from app.models.vacancy import VacancyEmploymentType, WorkSchedule
 from uuid import UUID
 
@@ -32,7 +33,7 @@ class VacancyBase(BaseModel):
 
 
 class VacancyCreate(VacancyBase):
-    pass
+    employer_id: uuid.UUID
 
 
 class VacancyUpdate(BaseModel):
@@ -63,8 +64,8 @@ class VacancyUpdate(BaseModel):
 
 
 class VacancyResponse(VacancyBase):
-    id: UUID
-    employer_id: UUID
+    id: uuid.UUID
+    employer_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
     is_active: bool

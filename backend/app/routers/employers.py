@@ -91,12 +91,12 @@ async def update_my_employer_profile(
 
 @router.get("/{employer_id}", response_model=EmployerResponse)
 async def get_employer(
-    employer_id: str,
+    employer_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
     """Get employer by ID."""
     result = await db.execute(
-        select(Employer).where(Employer.id == uuid.UUID(employer_id))
+        select(Employer).where(Employer.id == employer_id)
     )
     employer = result.scalar_one_or_none()
     

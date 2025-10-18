@@ -145,13 +145,13 @@ async def get_interviews(
 
 @router.get("/{interview_id}", response_model=InterviewResponse)
 async def get_interview(
-    interview_id: str,
+    interview_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employer_or_candidate)
 ):
     """Get interview by ID."""
     result = await db.execute(
-        select(Interview).where(Interview.id == uuid.UUID(interview_id))
+        select(Interview).where(Interview.id == interview_id)
     )
     interview = result.scalar_one_or_none()
     
@@ -202,14 +202,14 @@ async def get_interview(
 
 @router.put("/{interview_id}", response_model=InterviewResponse)
 async def update_interview(
-    interview_id: str,
+    interview_id: uuid.UUID,
     interview_update: InterviewUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employer_or_candidate)
 ):
     """Update interview."""
     result = await db.execute(
-        select(Interview).where(Interview.id == uuid.UUID(interview_id))
+        select(Interview).where(Interview.id == interview_id)
     )
     interview = result.scalar_one_or_none()
     
@@ -260,6 +260,6 @@ async def update_interview(
 
 
 @router.websocket("/ws/{interview_id}")
-async def websocket_interview(websocket: WebSocket, interview_id: str):
+async def websocket_interview(websocket: WebSocket, interview_id: uuid.UUID):
     """WebSocket endpoint for real-time interview communication."""
-    await websocket_endpoint(websocket, interview_id)
+    await websocket_endpoint(websocket, str(interview_id))

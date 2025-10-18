@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr
-from uuid import UUID
 from datetime import datetime
 from typing import Optional
+import uuid
 from app.models.user import UserRole
 
 
@@ -21,7 +21,7 @@ class UserLogin(BaseModel):
 
 
 class UserResponse(UserBase):
-    id: UUID  
+    id: uuid.UUID  
     created_at: datetime
     last_login: Optional[datetime] = None
 

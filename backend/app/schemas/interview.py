@@ -1,12 +1,13 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, Dict, Any
+import uuid
 from app.models.interview import InterviewStatus, InterviewStage, MessageSender, MessageType, EvaluationCategory
 
 
 class InterviewBase(BaseModel):
-    vacancy_id: str
-    candidate_id: str
+    vacancy_id: uuid.UUID
+    candidate_id: uuid.UUID
     ai_version: Optional[str] = None
 
 
@@ -25,7 +26,7 @@ class InterviewUpdate(BaseModel):
 
 
 class InterviewResponse(InterviewBase):
-    id: str
+    id: uuid.UUID
     status: InterviewStatus
     current_stage: InterviewStage
     started_at: datetime
@@ -41,7 +42,7 @@ class InterviewResponse(InterviewBase):
 
 # Message schemas
 class InterviewMessageBase(BaseModel):
-    interview_id: str
+    interview_id: uuid.UUID
     sender: MessageSender
     stage: InterviewStage
     message_type: MessageType
@@ -55,7 +56,7 @@ class InterviewMessageCreate(InterviewMessageBase):
 
 
 class InterviewMessageResponse(InterviewMessageBase):
-    id: str
+    id: uuid.UUID
     created_at: datetime
 
     class Config:
@@ -64,7 +65,7 @@ class InterviewMessageResponse(InterviewMessageBase):
 
 # Evaluation schemas
 class EvaluationScoreBase(BaseModel):
-    interview_id: str
+    interview_id: uuid.UUID
     category: EvaluationCategory
     score: float
     weight: float
@@ -76,14 +77,14 @@ class EvaluationScoreCreate(EvaluationScoreBase):
 
 
 class EvaluationScoreResponse(EvaluationScoreBase):
-    id: str
+    id: uuid.UUID
 
     class Config:
         from_attributes = True
 
 
 class EvaluationSummaryBase(BaseModel):
-    interview_id: str
+    interview_id: uuid.UUID
     overall_score: float
     breakdown: Dict[str, Any]
     reasoning: Optional[str] = None
@@ -95,7 +96,7 @@ class EvaluationSummaryCreate(EvaluationSummaryBase):
 
 
 class EvaluationSummaryResponse(EvaluationSummaryBase):
-    id: str
+    id: uuid.UUID
     generated_at: datetime
 
     class Config:

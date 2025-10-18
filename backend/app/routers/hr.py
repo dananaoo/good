@@ -64,7 +64,7 @@ async def get_hr_interviews(
 
 @router.get("/interviews/{interview_id}", response_model=InterviewResponse)
 async def get_hr_interview_detail(
-    interview_id: str,
+    interview_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employer)
 ):
@@ -85,7 +85,7 @@ async def get_hr_interview_detail(
     result = await db.execute(
         select(Interview).join(Vacancy).where(
             and_(
-                Interview.id == uuid.UUID(interview_id),
+                Interview.id == interview_id,
                 Vacancy.employer_id == employer.id
             )
         )
@@ -103,7 +103,7 @@ async def get_hr_interview_detail(
 
 @router.get("/interviews/{interview_id}/messages")
 async def get_interview_messages(
-    interview_id: str,
+    interview_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employer)
 ):
@@ -124,7 +124,7 @@ async def get_interview_messages(
     result = await db.execute(
         select(Interview).join(Vacancy).where(
             and_(
-                Interview.id == uuid.UUID(interview_id),
+                Interview.id == interview_id,
                 Vacancy.employer_id == employer.id
             )
         )
@@ -159,7 +159,7 @@ async def get_interview_messages(
 
 @router.get("/interviews/{interview_id}/evaluation", response_model=EvaluationSummaryResponse)
 async def get_interview_evaluation(
-    interview_id: str,
+    interview_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_employer)
 ):
@@ -180,7 +180,7 @@ async def get_interview_evaluation(
     result = await db.execute(
         select(Interview).join(Vacancy).where(
             and_(
-                Interview.id == uuid.UUID(interview_id),
+                Interview.id == interview_id,
                 Vacancy.employer_id == employer.id
             )
         )
