@@ -50,6 +50,12 @@ class Vacancy(Base):
     benefits = Column(ARRAY(String))
     description = Column(Text)
     source_url = Column(Text)
+    
+    # Interview focus settings (what AI should focus on during interviews)
+    interview_focus_resume_fit = Column(Boolean, default=True)  # Profile and vacancy main matches
+    interview_focus_hard_skills = Column(Boolean, default=False)  # Technical skills assessment
+    interview_focus_soft_skills = Column(Boolean, default=False)  # Soft skills and motivation
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)

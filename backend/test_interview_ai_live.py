@@ -56,6 +56,12 @@ def create_sample_vacancy():
     vacancy.conditions = ["Health insurance", "Flexible hours", "Remote work options"]
     vacancy.benefits = ["Competitive salary", "Professional development", "Team events"]
     vacancy.description = "We are looking for an experienced Python developer to join our growing team."
+    
+    # Interview focus settings (employer can choose what to focus on)
+    vacancy.interview_focus_resume_fit = True   # Default: always check basic fit
+    vacancy.interview_focus_hard_skills = False  # Focus on technical skills
+    vacancy.interview_focus_soft_skills = False  # Focus on soft skills
+    
     return vacancy
 
 

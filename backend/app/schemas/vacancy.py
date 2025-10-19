@@ -30,6 +30,11 @@ class VacancyBase(BaseModel):
     benefits: Optional[List[str]] = None
     description: Optional[str] = None
     source_url: Optional[str] = None
+    
+    # Interview focus settings
+    interview_focus_resume_fit: Optional[bool] = True
+    interview_focus_hard_skills: Optional[bool] = False
+    interview_focus_soft_skills: Optional[bool] = False
 
 
 class VacancyCreate(VacancyBase):
@@ -61,6 +66,11 @@ class VacancyUpdate(BaseModel):
     description: Optional[str] = None
     source_url: Optional[str] = None
     is_active: Optional[bool] = None
+    
+    # Interview focus settings
+    interview_focus_resume_fit: Optional[bool] = None
+    interview_focus_hard_skills: Optional[bool] = None
+    interview_focus_soft_skills: Optional[bool] = None
 
 
 class VacancyResponse(VacancyBase):

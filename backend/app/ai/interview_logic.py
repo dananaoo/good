@@ -118,6 +118,10 @@ class InterviewManager:
                 "conditions": vacancy.conditions,
                 "benefits": vacancy.benefits,
                 "description": vacancy.description,
+                # Interview focus settings
+                "interview_focus_resume_fit": vacancy.interview_focus_resume_fit,
+                "interview_focus_hard_skills": vacancy.interview_focus_hard_skills,
+                "interview_focus_soft_skills": vacancy.interview_focus_soft_skills,
             },
             "candidate": {
                 "full_name": candidate.full_name,
@@ -176,39 +180,50 @@ Your goal is to evaluate the candidate’s **resume fit, hard skills, and soft s
 
 ---
 
-### 🧩 INTERVIEW FLOW (3 STAGES ONLY)
+### 🧩 INTERVIEW FLOW (ADAPTIVE BASED ON EMPLOYER PREFERENCES)
 
-#### **Stage 1 — Resume Fit Check**
+**IMPORTANT**: Only conduct the interview stages that are enabled in the vacancy settings:
+- `interview_focus_resume_fit`: {context['vacancy']['interview_focus_resume_fit']}
+- `interview_focus_hard_skills`: {context['vacancy']['interview_focus_hard_skills']}  
+- `interview_focus_soft_skills`: {context['vacancy']['interview_focus_soft_skills']}
+
+
+
+#### **Stage 1 — Resume Fit Check** (ONLY if interview_focus_resume_fit is True)
 Compare candidate and vacancy data:
 - City, country, relocation, experience range
 - Salary, schedule, employment type, education level, languages
 
 If mismatches or missing info → ask 1–2 clarifying questions directly related to them.  
 Example:
-> “This role is based in Almaty — would relocation work for you?”  
-> “You mentioned full-time work preference — this position is hybrid, is that fine?”
+> "This role is based in Almaty — would relocation work for you?"  
+> "You mentioned full-time work preference — this position is hybrid, is that fine?"
 
 Then assign a **resume_fit score** based on data matching accuracy.
 
-#### **Stage 2 — Hard Skills**
+#### **Stage 2 — Hard Skills** (ONLY if interview_focus_hard_skills is True)
 Check the technical and professional match:
-- Compare required_skills, responsibilities, and requirements with candidate’s skills, projects, and resume text.
+- Compare required_skills, responsibilities, and requirements with candidate's skills, projects, and resume text.
 - Ask 1–2 concise, context-aware questions about real project experience or tool usage.
 - Score based on overlap and demonstrated competency.
 
-#### **Stage 3 — Soft Skills & Motivation**
+#### **Stage 3 — Soft Skills & Motivation** (ONLY if interview_focus_soft_skills is True)
 Ask 2–3 questions about motivation, communication, teamwork, adaptability, and learning attitude.  
-Then directly give the **final evaluation** — do not wait for a new “Stage 4”.
+Then directly give the **final evaluation** 
+
+**SKIP STAGES**: If a stage is disabled (False), skip it entirely and move to the next enabled stage. Do not need to mention it in the response. Move to the next stage immediately, without candidate's approving your decision.
 
 ---
 
 ### 🧮 EVALUATION RULES (ACCURACY MODE)
-Evaluate based on structured data and the candidate’s answers.
+Evaluate based on structured data and the candidate's answers.
 
-Use quantitative logic where possible:
-- Resume Fit = (matching fields ÷ relevant fields) × 100
-- Hard Skills = (matched or equivalent skills ÷ required skills) × 100 ± context adjustment (±10%)
-- Soft Skills = (traits shown ÷ expected traits) × 100
+**ONLY SCORE ENABLED STAGES**:
+- Resume Fit = (matching fields ÷ relevant fields) × 100 (only if interview_focus_resume_fit is True)
+- Hard Skills = (matched or equivalent skills ÷ required skills) × 100 ± context adjustment (±10%) (only if interview_focus_hard_skills is True)
+- Soft Skills = (traits shown ÷ expected traits) × 100 (only if interview_focus_soft_skills is True)
+
+**DISABLED STAGES**: If a stage is disabled, set its score to 0 and skip evaluation. 
 
 Partial matches count as 0.5.  
 Missing data is neutral (score ≈ 50%).  
@@ -222,7 +237,7 @@ Never assign random values.
 <SCORES>{{"stage": 1, "resume_fit": 85, "hard_skills": 0, "soft_skills": 0}}</SCORES>
 <STAGE>1</STAGE>
 
-After finishing **Stage 3**, immediately provide the **final structured summary** — no Stage 4 required:
+After finishing all available stages, immediately provide the **final structured summary**:
 
 <SCORES>{{"stage": 3, "resume_fit": 85, "hard_skills": 90, "soft_skills": 78}}</SCORES>
 <STAGE>3</STAGE>
@@ -232,7 +247,7 @@ After finishing **Stage 3**, immediately provide the **final structured summary*
 
 ### 🚀 FINAL EVALUATION
 
-Also give the final evaluation immediately after finishing Stage 3, without waiting for the candidate's response.
+Also give the final evaluation immediately after finishing all available stages, without waiting for the candidate's response.
 The final evaluation should be in the following format:
 
 **Overall Assessment**: [Overall match percentage]%
@@ -396,14 +411,35 @@ Thank the candidate warmly and professionally.
 
     def get_final_score(self) -> Dict:
         """Get final evaluation from AI-generated scores."""
-        if not all(v > 0 for v in self.scores.values()):
+        # Get enabled stages from vacancy
+        vacancy = self.interview_data.get("vacancy")
+        if not vacancy:
+            return {"error": "Interview data not available"}
+        
+        enabled_stages = []
+        if vacancy.interview_focus_resume_fit:
+            enabled_stages.append("resume_fit")
+        if vacancy.interview_focus_hard_skills:
+            enabled_stages.append("hard_skills")
+        if vacancy.interview_focus_soft_skills:
+            enabled_stages.append("soft_skills")
+        
+        # Check if all enabled stages have scores
+        enabled_scores = {stage: self.scores[stage] for stage in enabled_stages}
+        if not all(v > 0 for v in enabled_scores.values()):
             return {"error": "Interview not completed"}
         
-        # Use the scores that were extracted during the interview
+        # Calculate overall score based only on enabled stages
+        if enabled_scores:
+            overall_score = round(sum(enabled_scores.values()) / len(enabled_scores), 1)
+        else:
+            overall_score = 0
+        
         return {
-            "overall_relevance": round(sum(self.scores.values()) / len(self.scores), 1),
+            "overall_relevance": overall_score,
             "breakdown": self.scores.copy(),
             "reasoning": self._generate_simple_reasoning(),
+            "enabled_stages": enabled_stages,
         }
     
     def _generate_simple_reasoning(self) -> List[str]:
