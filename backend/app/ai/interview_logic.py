@@ -7,6 +7,7 @@ from app.models.candidate import (
     CandidateEducation,
     CandidateSkill,
     CandidateLanguage,
+    CandidateAchievement
 )
 from app.models.resume import Resume
 from app.models.interview import InterviewStage
@@ -63,11 +64,14 @@ class InterviewManager:
         return {"message": response.text, "stage": self.current_stage}
 
     async def process_message(self, message: str) -> Dict:
-        """Process candidate's message and return AI recruiter’s next question."""
+        """Process candidate's message and return AI recruiter's next question."""
         if not self.chat:
             raise Exception("Interview not initialized")
 
         response = await self.chat.send_message_async(message, generation_config=self.generation_config)
+        
+        # Store the response for final evaluation extraction
+        self._last_response = response.text
 
         scores = self._extract_scores(response.text)
         if scores:
@@ -131,89 +135,123 @@ class InterviewManager:
                     {"language": lang.language, "level": lang.level} for lang in candidate.languages
                 ],
             },
+            "resume": {
+                "resume_text": resume.resume_text,
+                "parsed_json": resume.parsed_json,
+                "file_url": resume.file_url,
+            },
         }
 
     # -------------------------------------------------------------------------
     # PROMPT GENERATION
     # -------------------------------------------------------------------------
     def _get_system_prompt(self, context: Dict) -> str:
-        """System-level prompt for Gemini — ensures natural variation."""
-        return f"""You are an **AI recruiter** conducting a friendly, short, professional interview with a candidate.
-
-🎯 **Your goal**:
-- Compare candidate profile with job vacancy.
-- Ask 2–3 short, natural questions per stage.
-- Adjust dynamically — don’t repeat template wording.
-- Evaluate and score: Resume Fit, Hard Skills, Soft Skills & Motivation.
+        """System-level prompt for Gemini — ensures smooth flow and instant final evaluation."""
+        return f"""
+You are an **AI HR expert and recruiter** conducting a structured, friendly, and professional interview.  
+Your goal is to evaluate the candidate’s **resume fit, hard skills, and soft skills** based on the provided structured data and the conversation.
 
 ---
 
-### 📊 VACANCY DATA
+### 📊 JOB VACANCY
 {json.dumps(context['vacancy'], indent=2, default=str)}
 
-### 👤 CANDIDATE DATA
+### 👤 CANDIDATE PROFILE
 {json.dumps(context['candidate'], indent=2, default=str)}
 
----
-
-### 💬 COMMUNICATION STYLE
-- Speak in **clear, natural English**.
-- Vary phrasing: each question should sound unique and conversational.
-- Use warm, polite tone: “That’s great!”, “Good to know!”, “I see, thanks for clarifying.”
-- Avoid robotic or repetitive patterns.
-- Keep messages concise (< 5 sentences).
+### 📄 RESUME DATA
+{json.dumps(context['resume'], indent=2, default=str)}
 
 ---
 
-### 🧩 INTERVIEW STAGES
-
-#### Stage 1 — Resume Fit
-Check city, experience, employment type, salary expectations, and availability.
-Ask short clarifying questions (not identical to examples):
-- “Where are you currently based?”
-- “Would relocation be an option?”
-- “Does the schedule or compensation fit your preferences?”
-
-#### Stage 2 — Hard Skills
-Explore candidate’s technical abilities using context-aware phrasing.
-Example *patterns* (vary wording):
-- “Tell me about a project where you used [a relevant skill].”
-- “Which tools or technologies do you work with most often?”
-- “How do you usually approach solving [task type] problems?”
-
-#### Stage 3 — Soft Skills & Motivation
-Ask about communication, teamwork, goals, and work style.
-Vary tone and question structure:
-- “What drives you to do your best work?”
-- “How do you handle challenges or feedback?”
-- “What kind of work environment helps you perform best?”
+### 💬 COMMUNICATION RULES
+- Always ask the **next relevant question immediately** after the candidate responds.  
+  Never wait silently or request them to continue.  
+- Maintain a **natural flow** — your message should always include either:
+  - a short reaction to their answer **and**
+  - the **next clear question**.
+- Use warm, polite English with natural variation (“That’s great!”, “Thanks for sharing!”, “Good to know!”).
+- Keep each message under 4 sentences.
+- Adapt dynamically — use the structured data to guide questions (ask only about missing, mismatched, or unclear points).
 
 ---
 
-### 🧮 SCORING RULES
-After each stage, estimate numeric scores (0–100%) for:
-- resume_fit
-- hard_skills
-- soft_skills
+### 🧩 INTERVIEW FLOW (3 STAGES ONLY)
 
-Format strictly as:
+#### **Stage 1 — Resume Fit Check**
+Compare candidate and vacancy data:
+- City, country, relocation, experience range
+- Salary, schedule, employment type, education level, languages
+
+If mismatches or missing info → ask 1–2 clarifying questions directly related to them.  
+Example:
+> “This role is based in Almaty — would relocation work for you?”  
+> “You mentioned full-time work preference — this position is hybrid, is that fine?”
+
+Then assign a **resume_fit score** based on data matching accuracy.
+
+#### **Stage 2 — Hard Skills**
+Check the technical and professional match:
+- Compare required_skills, responsibilities, and requirements with candidate’s skills, projects, and resume text.
+- Ask 1–2 concise, context-aware questions about real project experience or tool usage.
+- Score based on overlap and demonstrated competency.
+
+#### **Stage 3 — Soft Skills & Motivation**
+Ask 2–3 questions about motivation, communication, teamwork, adaptability, and learning attitude.  
+Then directly give the **final evaluation** — do not wait for a new “Stage 4”.
+
+---
+
+### 🧮 EVALUATION RULES (ACCURACY MODE)
+Evaluate based on structured data and the candidate’s answers.
+
+Use quantitative logic where possible:
+- Resume Fit = (matching fields ÷ relevant fields) × 100
+- Hard Skills = (matched or equivalent skills ÷ required skills) × 100 ± context adjustment (±10%)
+- Soft Skills = (traits shown ÷ expected traits) × 100
+
+Partial matches count as 0.5.  
+Missing data is neutral (score ≈ 50%).  
+Never assign random values.
+
+---
+
+
+
+**Output format after each response:**
 <SCORES>{{"stage": 1, "resume_fit": 85, "hard_skills": 0, "soft_skills": 0}}</SCORES>
 <STAGE>1</STAGE>
 
-When all three categories have scores > 0:
-<SCORES>{{"stage": 4, "resume_fit": 85, "hard_skills": 90, "soft_skills": 78}}</SCORES>
-<STAGE>4</STAGE>
+After finishing **Stage 3**, immediately provide the **final structured summary** — no Stage 4 required:
+
+<SCORES>{{"stage": 3, "resume_fit": 85, "hard_skills": 90, "soft_skills": 78}}</SCORES>
+<STAGE>3</STAGE>
+
 
 ---
 
-### 🚀 FINAL STAGE
-When interview ends, summarize briefly:
-- Overall match percentage
-- Category breakdown
-- 2–3 concise reasoning sentences
-- Thank the candidate warmly
+### 🚀 FINAL EVALUATION
 
-Start with a greeting and Stage 1: **Resume Fit.**
+Also give the final evaluation immediately after finishing Stage 3, without waiting for the candidate's response.
+The final evaluation should be in the following format:
+
+**Overall Assessment**: [Overall match percentage]%
+
+**Breakdown**:
+- Resume Fit: [score]% - [brief reason]
+- Hard Skills: [score]% - [brief reason]  
+- Soft Skills: [score]% - [brief reason]
+
+**Key Insights**:
+- [2-3 specific observations about strengths/concerns]
+- [Recommendation for next steps]
+
+Thank the candidate warmly and professionally.
+
+
+---
+
+**Start the interview with a friendly greeting and begin Stage 1.**
 """
 
     # -------------------------------------------------------------------------
@@ -295,62 +333,120 @@ Start with a greeting and Stage 1: **Resume Fit.**
         ]
 
     # -------------------------------------------------------------------------
-    # FINAL EVALUATION
+    # FINAL EVALUATION (AI-DRIVEN)
     # -------------------------------------------------------------------------
-    def _calculate_dynamic_weights(self, vacancy: Vacancy) -> Dict[str, float]:
-        weights = {"resume_fit": 0.3, "hard_skills": 0.4, "soft_skills": 0.3}
-        if vacancy.required_skills and len(vacancy.required_skills) > 5:
-            weights.update({"hard_skills": 0.5, "resume_fit": 0.25, "soft_skills": 0.25})
-        if getattr(vacancy.work_schedule, "value", None) == "remote":
-            weights.update({"resume_fit": 0.2, "soft_skills": 0.4})
-        if getattr(vacancy.employment_type, "value", None) == "internship":
-            weights.update({"hard_skills": 0.3, "soft_skills": 0.4})
-        return weights
+    def _extract_final_evaluation(self, response: str) -> Optional[Dict]:
+        """Extract final evaluation from AI response."""
+        # Look for structured evaluation in the response
+        import re
+        
+        # Try to extract overall assessment percentage
+        overall_match = re.search(r"Overall Assessment[:\s]*(\d+)%", response, re.IGNORECASE)
+        if not overall_match:
+            overall_match = re.search(r"Overall[:\s]*(\d+)%", response, re.IGNORECASE)
+        
+        # Try to extract breakdown scores
+        breakdown = {}
+        breakdown_patterns = [
+            r"Resume Fit[:\s]*(\d+)%",
+            r"Hard Skills[:\s]*(\d+)%", 
+            r"Soft Skills[:\s]*(\d+)%"
+        ]
+        
+        for pattern in breakdown_patterns:
+            match = re.search(pattern, response, re.IGNORECASE)
+            if match:
+                score = int(match.group(1))
+                if "Resume Fit" in pattern:
+                    breakdown["resume_fit"] = score
+                elif "Hard Skills" in pattern:
+                    breakdown["hard_skills"] = score
+                elif "Soft Skills" in pattern:
+                    breakdown["soft_skills"] = score
+        
+        if overall_match and breakdown:
+            return {
+                "overall_relevance": int(overall_match.group(1)),
+                "breakdown": breakdown,
+                "reasoning": self._extract_reasoning_from_response(response)
+            }
+        
+        return None
+    
+    def _extract_reasoning_from_response(self, response: str) -> List[str]:
+        """Extract reasoning points from AI response."""
+        import re
+        
+        # Look for bullet points or numbered lists
+        reasoning_patterns = [
+            r"[-•]\s*([^-\n]+)",
+            r"\d+\.\s*([^0-9\n]+)",
+            r"Key Insights[:\s]*([^$]+)",
+        ]
+        
+        reasoning = []
+        for pattern in reasoning_patterns:
+            matches = re.findall(pattern, response, re.IGNORECASE | re.MULTILINE)
+            for match in matches:
+                clean_match = match.strip()
+                if len(clean_match) > 10 and len(clean_match) < 200:  # Reasonable length
+                    reasoning.append(clean_match)
+        
+        return reasoning[:3]  # Limit to 3 key points
 
     def get_final_score(self) -> Dict:
+        """Get final evaluation from AI-generated scores."""
         if not all(v > 0 for v in self.scores.values()):
             return {"error": "Interview not completed"}
-
-        weights = self._calculate_dynamic_weights(self.interview_data["vacancy"])
-        final = (
-            self.scores["resume_fit"] * weights["resume_fit"]
-            + self.scores["hard_skills"] * weights["hard_skills"]
-            + self.scores["soft_skills"] * weights["soft_skills"]
-        )
+        
+        # Use the scores that were extracted during the interview
         return {
-            "overall_relevance": round(final, 1),
-            "breakdown": self.scores,
-            "weights": weights,
-            "reasoning": self._generate_reasoning(),
+            "overall_relevance": round(sum(self.scores.values()) / len(self.scores), 1),
+            "breakdown": self.scores.copy(),
+            "reasoning": self._generate_simple_reasoning(),
         }
-
-    def _generate_reasoning(self) -> str:
-        parts = []
+    
+    def _generate_simple_reasoning(self) -> List[str]:
+        """Generate simple reasoning based on scores."""
+        reasoning = []
+        
         if self.scores["resume_fit"] >= 80:
-            parts.append("Strong alignment with job requirements")
+            reasoning.append("Strong alignment with job requirements")
         elif self.scores["resume_fit"] >= 60:
-            parts.append("Good overall fit with minor mismatches")
+            reasoning.append("Good overall fit with minor gaps")
         else:
-            parts.append("Some inconsistencies in job fit")
-
+            reasoning.append("Some mismatches in basic requirements")
+            
         if self.scores["hard_skills"] >= 80:
-            parts.append("Excellent technical proficiency")
+            reasoning.append("Excellent technical competency")
         elif self.scores["hard_skills"] >= 60:
-            parts.append("Solid skills with room for growth")
+            reasoning.append("Solid technical skills")
         else:
-            parts.append("Technical knowledge below expectations")
-
+            reasoning.append("Technical skills need development")
+            
         if self.scores["soft_skills"] >= 80:
-            parts.append("Highly motivated and communicative")
+            reasoning.append("Strong communication and motivation")
         elif self.scores["soft_skills"] >= 60:
-            parts.append("Good interpersonal adaptability")
+            reasoning.append("Good interpersonal skills")
         else:
-            parts.append("Needs improvement in motivation or communication")
-
-        return "; ".join(parts) + "."
+            reasoning.append("Soft skills could be improved")
+            
+        return reasoning
 
     async def generate_final_evaluation(self) -> Dict:
-        """Generate HR-ready evaluation summary."""
+        """Generate final evaluation - AI-driven with fallback to extracted scores."""
+        # First try to get evaluation from the last AI response
+        if hasattr(self, '_last_response'):
+            ai_evaluation = self._extract_final_evaluation(self._last_response)
+            if ai_evaluation:
+                return {
+                    "overall_score": ai_evaluation["overall_relevance"],
+                    "breakdown": ai_evaluation["breakdown"],
+                    "reasoning": ai_evaluation["reasoning"],
+                    "ai_confidence": 0.9,
+                }
+        
+        # Fallback to extracted scores
         final_data = self.get_final_score()
         if "error" in final_data:
             return final_data
@@ -359,8 +455,7 @@ Start with a greeting and Stage 1: **Resume Fit.**
             "overall_score": final_data["overall_relevance"],
             "breakdown": final_data["breakdown"],
             "reasoning": final_data["reasoning"],
-            "weights": final_data["weights"],
-            "ai_confidence": 0.85,
+            "ai_confidence": 0.8,
         }
 
 
