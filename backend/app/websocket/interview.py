@@ -14,6 +14,7 @@ from app.models.candidate import Candidate
 from app.models.vacancy import Vacancy
 from app.models.resume import Resume
 from app.ai.interview_logic import InterviewAI
+from app.services.evaluation_service import EvaluationService
 
 # Redis connection for session management
 redis_client = None
@@ -233,14 +234,37 @@ async def handle_candidate_message(
             
             # Generate final evaluation
             evaluation = await ai_interviewer.generate_final_evaluation()
-            interview.final_score = evaluation.get("overall_score")
-            interview.summary_json = evaluation
             
-            await websocket.send_json({
-                "type": "interview_complete",
-                "final_score": interview.final_score,
-                "summary": evaluation
-            })
+            # Save complete evaluation data using the service
+            evaluation_service = EvaluationService(db)
+            save_result = await evaluation_service.save_complete_evaluation(
+                interview_id=interview.id,
+                ai_evaluation=evaluation,
+                chat_history=[]  # Chat history is already saved above
+            )
+            
+            if save_result["success"]:
+                interview.final_score = evaluation.get("overall_score")
+                interview.summary_json = evaluation
+                
+                await websocket.send_json({
+                    "type": "interview_complete",
+                    "final_score": interview.final_score,
+                    "summary": evaluation,
+                    "evaluation_saved": True
+                })
+            else:
+                # Fallback: save basic data if detailed saving fails
+                interview.final_score = evaluation.get("overall_score")
+                interview.summary_json = evaluation
+                
+                await websocket.send_json({
+                    "type": "interview_complete",
+                    "final_score": interview.final_score,
+                    "summary": evaluation,
+                    "evaluation_saved": False,
+                    "error": save_result.get("error", "Failed to save detailed evaluation")
+                })
         else:
             await websocket.send_json({
                 "type": "message",

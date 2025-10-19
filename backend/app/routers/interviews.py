@@ -2,17 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from typing import List, Optional
-import uuid
+import uuid 
 
 from app.db import get_db
 from app.core.dependencies import get_current_active_user, require_employer_or_candidate
 from app.models.user import User
-from app.models.interview import Interview, InterviewStatus, InterviewStage
+from app.models.interview import Interview, InterviewStatus, InterviewStage, EvaluationScore, EvaluationSummary, InterviewMessage
 from app.models.candidate import Candidate
 from app.models.vacancy import Vacancy
 from app.models.employer import Employer
-from app.schemas.interview import InterviewCreate, InterviewResponse, InterviewUpdate
+from app.schemas.interview import InterviewCreate, InterviewResponse, InterviewUpdate, EvaluationScoreResponse, EvaluationSummaryResponse, InterviewMessageResponse
 from app.websocket.interview import websocket_endpoint
+from app.services.evaluation_service import EvaluationService
 
 router = APIRouter()
 
@@ -26,7 +27,7 @@ async def create_interview(
     """Create a new interview."""
     # Verify candidate and vacancy exist
     result = await db.execute(
-        select(Candidate).where(Candidate.id == uuid.UUID(interview_data.candidate_id))
+        select(Candidate).where(Candidate.id == interview_data.candidate_id)
     )
     candidate = result.scalar_one_or_none()
     
@@ -37,7 +38,7 @@ async def create_interview(
         )
     
     result = await db.execute(
-        select(Vacancy).where(Vacancy.id == uuid.UUID(interview_data.vacancy_id))
+        select(Vacancy).where(Vacancy.id == interview_data.vacancy_id)
     )
     vacancy = result.scalar_one_or_none()
     
@@ -51,8 +52,8 @@ async def create_interview(
     result = await db.execute(
         select(Interview).where(
             and_(
-                Interview.candidate_id == uuid.UUID(interview_data.candidate_id),
-                Interview.vacancy_id == uuid.UUID(interview_data.vacancy_id)
+                Interview.candidate_id == interview_data.candidate_id,
+                Interview.vacancy_id == interview_data.vacancy_id
             )
         )
     )
@@ -257,6 +258,273 @@ async def update_interview(
     await db.refresh(interview)
     
     return InterviewResponse.model_validate(interview)
+
+
+@router.get("/{interview_id}/messages", response_model=List[InterviewMessageResponse])
+async def get_interview_messages(
+    interview_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_employer_or_candidate)
+):
+    """Get chat messages for an interview."""
+    # Verify interview exists and user has access
+    result = await db.execute(
+        select(Interview).where(Interview.id == interview_id)
+    )
+    interview = result.scalar_one_or_none()
+    
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+    
+    # Check permissions (same logic as get_interview)
+    if current_user.role.value == "candidate":
+        result = await db.execute(
+            select(Candidate).where(Candidate.user_id == current_user.id)
+        )
+        candidate = result.scalar_one_or_none()
+        
+        if not candidate or interview.candidate_id != candidate.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+    
+    elif current_user.role.value == "employer":
+        result = await db.execute(
+            select(Employer).where(Employer.user_id == current_user.id)
+        )
+        employer = result.scalar_one_or_none()
+        
+        if employer:
+            result = await db.execute(
+                select(Vacancy).where(
+                    and_(
+                        Vacancy.id == interview.vacancy_id,
+                        Vacancy.employer_id == employer.id
+                    )
+                )
+            )
+            vacancy = result.scalar_one_or_none()
+            
+            if not vacancy:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
+    
+    # Get messages
+    result = await db.execute(
+        select(InterviewMessage)
+        .where(InterviewMessage.interview_id == interview_id)
+        .order_by(InterviewMessage.created_at)
+    )
+    messages = result.scalars().all()
+    
+    return [InterviewMessageResponse.model_validate(message) for message in messages]
+
+
+@router.get("/{interview_id}/evaluation-scores", response_model=List[EvaluationScoreResponse])
+async def get_interview_evaluation_scores(
+    interview_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_employer_or_candidate)
+):
+    """Get evaluation scores for an interview."""
+    # Verify interview exists and user has access (same logic as above)
+    result = await db.execute(
+        select(Interview).where(Interview.id == interview_id)
+    )
+    interview = result.scalar_one_or_none()
+    
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+    
+    # Check permissions
+    if current_user.role.value == "candidate":
+        result = await db.execute(
+            select(Candidate).where(Candidate.user_id == current_user.id)
+        )
+        candidate = result.scalar_one_or_none()
+        
+        if not candidate or interview.candidate_id != candidate.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+    
+    elif current_user.role.value == "employer":
+        result = await db.execute(
+            select(Employer).where(Employer.user_id == current_user.id)
+        )
+        employer = result.scalar_one_or_none()
+        
+        if employer:
+            result = await db.execute(
+                select(Vacancy).where(
+                    and_(
+                        Vacancy.id == interview.vacancy_id,
+                        Vacancy.employer_id == employer.id
+                    )
+                )
+            )
+            vacancy = result.scalar_one_or_none()
+            
+            if not vacancy:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
+    
+    # Get evaluation scores
+    result = await db.execute(
+        select(EvaluationScore).where(EvaluationScore.interview_id == interview_id)
+    )
+    scores = result.scalars().all()
+    
+    return [EvaluationScoreResponse.model_validate(score) for score in scores]
+
+
+@router.get("/{interview_id}/evaluation-summary", response_model=EvaluationSummaryResponse)
+async def get_interview_evaluation_summary(
+    interview_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_employer_or_candidate)
+):
+    """Get evaluation summary for an interview."""
+    # Verify interview exists and user has access (same logic as above)
+    result = await db.execute(
+        select(Interview).where(Interview.id == interview_id)
+    )
+    interview = result.scalar_one_or_none()
+    
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+    
+    # Check permissions
+    if current_user.role.value == "candidate":
+        result = await db.execute(
+            select(Candidate).where(Candidate.user_id == current_user.id)
+        )
+        candidate = result.scalar_one_or_none()
+        
+        if not candidate or interview.candidate_id != candidate.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+    
+    elif current_user.role.value == "employer":
+        result = await db.execute(
+            select(Employer).where(Employer.user_id == current_user.id)
+        )
+        employer = result.scalar_one_or_none()
+        
+        if employer:
+            result = await db.execute(
+                select(Vacancy).where(
+                    and_(
+                        Vacancy.id == interview.vacancy_id,
+                        Vacancy.employer_id == employer.id
+                    )
+                )
+            )
+            vacancy = result.scalar_one_or_none()
+            
+            if not vacancy:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
+    
+    # Get evaluation summary
+    result = await db.execute(
+        select(EvaluationSummary).where(EvaluationSummary.interview_id == interview_id)
+    )
+    summary = result.scalar_one_or_none()
+    
+    if not summary:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation summary not found"
+        )
+    
+    return EvaluationSummaryResponse.model_validate(summary)
+
+
+@router.get("/{interview_id}/complete-evaluation")
+async def get_complete_interview_evaluation(
+    interview_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_employer_or_candidate)
+):
+    """Get complete evaluation data for an interview (interview + scores + summary + messages)."""
+    # Verify interview exists and user has access (same logic as above)
+    result = await db.execute(
+        select(Interview).where(Interview.id == interview_id)
+    )
+    interview = result.scalar_one_or_none()
+    
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+    
+    # Check permissions
+    if current_user.role.value == "candidate":
+        result = await db.execute(
+            select(Candidate).where(Candidate.user_id == current_user.id)
+        )
+        candidate = result.scalar_one_or_none()
+        
+        if not candidate or interview.candidate_id != candidate.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+    
+    elif current_user.role.value == "employer":
+        result = await db.execute(
+            select(Employer).where(Employer.user_id == current_user.id)
+        )
+        employer = result.scalar_one_or_none()
+        
+        if employer:
+            result = await db.execute(
+                select(Vacancy).where(
+                    and_(
+                        Vacancy.id == interview.vacancy_id,
+                        Vacancy.employer_id == employer.id
+                    )
+                )
+            )
+            vacancy = result.scalar_one_or_none()
+            
+            if not vacancy:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied"
+                )
+    
+    # Get complete evaluation data using the service
+    evaluation_service = EvaluationService(db)
+    evaluation_data = await evaluation_service.get_interview_evaluation_data(interview_id)
+    
+    return {
+        "interview": InterviewResponse.model_validate(evaluation_data["interview"]),
+        "evaluation_scores": [EvaluationScoreResponse.model_validate(score) for score in evaluation_data["evaluation_scores"]],
+        "evaluation_summary": EvaluationSummaryResponse.model_validate(evaluation_data["evaluation_summary"]) if evaluation_data["evaluation_summary"] else None,
+        "chat_messages": [InterviewMessageResponse.model_validate(message) for message in evaluation_data["chat_messages"]]
+    }
 
 
 @router.websocket("/ws/{interview_id}")

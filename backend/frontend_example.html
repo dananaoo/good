@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .chat-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            height: 500px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 70%;
+        }
+        .ai-message {
+            background-color: #e3f2fd;
+            margin-right: auto;
+        }
+        .user-message {
+            background-color: #f3e5f5;
+            margin-left: auto;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        .input-container input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .input-container button {
+            padding: 10px 20px;
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .status {
+            padding: 10px;
+            background-color: #fff3cd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .evaluation {
+            background-color: #d4edda;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🤖 AI Interview Chat</h1>
+    
+    <div class="status" id="status">
+        Status: Connecting...
+    </div>
+    
+    <div class="chat-container" id="chatContainer">
+        <!-- Chat messages will appear here -->
+    </div>
+    
+    <div class="input-container">
+        <input type="text" id="messageInput" placeholder="Type your response..." disabled>
+        <button id="sendButton" onclick="sendMessage()" disabled>Send</button>
+    </div>
+    
+    <div class="evaluation" id="evaluation" style="display: none;">
+        <h3>📊 Final Evaluation</h3>
+        <div id="evaluationContent"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let interviewId = null;
+        let isConnected = false;
+
+        // Initialize the chat
+        async function initializeChat() {
+            try {
+                // Step 1: Create interview (you'll need to provide real IDs)
+                const response = await fetch('/api/interviews/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // Add authentication headers here
+                    },
+                    body: JSON.stringify({
+                        vacancy_id: 'your-vacancy-id-here',
+                        candidate_id: 'your-candidate-id-here'
+                    })
+                });
+
+                if (response.ok) {
+                    const interview = await response.json();
+                    interviewId = interview.id;
+                    
+                    // Step 2: Connect to WebSocket
+                    connectWebSocket();
+                } else {
+                    updateStatus('Failed to create interview: ' + response.statusText);
+                }
+            } catch (error) {
+                updateStatus('Error: ' + error.message);
+            }
+        }
+
+        // Connect to WebSocket
+        function connectWebSocket() {
+            if (!interviewId) {
+                updateStatus('No interview ID available');
+                return;
+            }
+
+            ws = new WebSocket(`ws://localhost:8000/interviews/ws/${interviewId}`);
+            
+            ws.onopen = function() {
+                updateStatus('Connected to AI Interview');
+                isConnected = true;
+                document.getElementById('messageInput').disabled = false;
+                document.getElementById('sendButton').disabled = false;
+            };
+
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+
+            ws.onclose = function() {
+                updateStatus('Connection closed');
+                isConnected = false;
+                document.getElementById('messageInput').disabled = true;
+                document.getElementById('sendButton').disabled = true;
+            };
+
+            ws.onerror = function(error) {
+                updateStatus('WebSocket error: ' + error);
+            };
+        }
+
+        // Handle incoming messages
+        function handleMessage(data) {
+            if (data.type === 'message') {
+                addMessage(data.message, 'ai');
+                updateStatus(`Stage: ${data.stage || 'Unknown'}`);
+            } else if (data.type === 'interview_complete') {
+                addMessage('🎉 Interview completed!', 'ai');
+                showFinalEvaluation(data.summary);
+                updateStatus('Interview completed');
+            } else if (data.type === 'error') {
+                addMessage('❌ Error: ' + data.message, 'ai');
+            }
+        }
+
+        // Send message to AI
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message && ws && isConnected) {
+                addMessage(message, 'user');
+                ws.send(JSON.stringify({
+                    type: 'candidate_message',
+                    message: message
+                }));
+                input.value = '';
+            }
+        }
+
+        // Add message to chat
+        function addMessage(text, sender) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = text;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Update status
+        function updateStatus(status) {
+            document.getElementById('status').textContent = 'Status: ' + status;
+        }
+
+        // Show final evaluation
+        function showFinalEvaluation(summary) {
+            const evaluationDiv = document.getElementById('evaluation');
+            const contentDiv = document.getElementById('evaluationContent');
+            
+            contentDiv.innerHTML = `
+                <p><strong>Overall Score:</strong> ${summary.overall_score}%</p>
+                <p><strong>Breakdown:</strong></p>
+                <ul>
+                    ${Object.entries(summary.breakdown).map(([key, value]) => 
+                        `<li>${key.replace('_', ' ').toUpperCase()}: ${value}%</li>`
+                    ).join('')}
+                </ul>
+                <p><strong>Reasoning:</strong> ${Array.isArray(summary.reasoning) ? summary.reasoning.join('; ') : summary.reasoning}</p>
+                <p><strong>AI Confidence:</strong> ${(summary.ai_confidence * 100).toFixed(1)}%</p>
+            `;
+            
+            evaluationDiv.style.display = 'block';
+        }
+
+        // Handle Enter key
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Initialize when page loads
+        window.onload = function() {
+            // For demo purposes, you can manually set interview ID
+            // interviewId = 'your-interview-id-here';
+            // connectWebSocket();
+            
+            // Or create a new interview
+            // initializeChat();
+            
+            updateStatus('Ready to start interview');
+        };
+    </script>
+</body>
+</html>
